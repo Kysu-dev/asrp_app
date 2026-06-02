@@ -1,0 +1,24 @@
+=== ASR Training Report ===
+Timestamp : 2026-06-01 18:49:15
+
+Test Accuracy : 93.75%
+CV Mean       : 76.84% ± 17.12%
+CV Scores     : ['78.57%', '47.77%', '70.40%', '91.93%', '95.52%']
+
+              precision    recall  f1-score   support
+
+     Angka 0       0.81      1.00      0.89        21
+     Angka 1       1.00      1.00      1.00        20
+     Angka 2       1.00      0.95      0.98        21
+     Angka 3       1.00      0.92      0.96        26
+     Angka 4       0.95      1.00      0.98        21
+     Angka 5       0.83      0.90      0.86        21
+     Angka 6       1.00      0.73      0.84        26
+     Angka 7       0.93      1.00      0.96        26
+     Angka 8       1.00      1.00      1.00        21
+     Angka 9       0.90      0.90      0.90        21
+
+    accuracy                           0.94       224
+   macro avg       0.94      0.94      0.94       224
+weighted avg       0.94      0.94      0.94       224
+

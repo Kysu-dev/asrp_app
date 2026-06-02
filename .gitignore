@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Editor / tooling
+.vscode/
+.idea/
+.DS_Store
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Raw per-speaker datasets
+dataset_farras/
+dataset_felix/
+dataset_rael/
+dataset_rifki/
