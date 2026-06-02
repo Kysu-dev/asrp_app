@@ -1,0 +1,45 @@
+=== SVM TRAINING REPORT (GridSearchCV) ===
+
+=== FEATURE DEBUG ===
+X shape     : (1300, 120)
+feature dim : 120
+
+=== GRIDSEARCH RESULT ===
+Best params : {'svc__C': 10, 'svc__gamma': 'scale', 'svc__kernel': 'rbf'}
+Best CV acc : 99.06%
+
+Train Accuracy : 100.00%
+Test Accuracy  : 31.09%
+
+CV Mean        : 60.25%
+CV Std         : 17.12%
+
+Class Distribution:
+  0: 130
+  1: 130
+  2: 130
+  3: 130
+  4: 130
+  5: 130
+  6: 130
+  7: 130
+  8: 130
+  9: 130
+
+CLASSIFICATION REPORT:
+              precision    recall  f1-score   support
+
+           0       0.42      0.62      0.50        34
+           1       1.00      0.19      0.32        26
+           2       0.26      0.82      0.39        38
+           3       1.00      0.17      0.29        30
+           4       0.12      0.14      0.13        35
+           5       1.00      0.03      0.05        37
+           6       0.19      0.37      0.25        30
+           7       0.35      0.63      0.45        30
+           8       1.00      0.20      0.33        41
+           9       0.00      0.00      0.00        40
+
+    accuracy                           0.31       341
+   macro avg       0.53      0.32      0.27       341
+weighted avg       0.52      0.31      0.26       341
