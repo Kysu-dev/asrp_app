@@ -1,5 +1,5 @@
 """
-FIXED ASR APP
+ASR Flask app
 """
 
 import os
@@ -11,6 +11,8 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # HARUS SAMA DENGAN TRAINING
 SAMPLE_RATE = 16000
 DURATION    = 2.0
@@ -18,42 +20,55 @@ N_MFCC      = 20
 N_FFT       = 512
 HOP_LENGTH  = 160
 
-MODEL_PATH  = "models/asr_model.pkl"
-SCALER_PATH = "models/scaler.pkl"
+MODEL_PATH  = os.path.join(BASE_DIR, "models", "asr_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
 
 CLASSES = [str(i) for i in range(10)]
 
 model = None
 scaler = None
+model_error = None
 
 
 # ==========================
 # LOAD MODEL
 # ==========================
 def load_model():
-    global model, scaler
+    global model, scaler, model_error
 
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
+    try:
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
 
-    with open(SCALER_PATH, "rb") as f:
-        scaler = pickle.load(f)
+        with open(SCALER_PATH, "rb") as f:
+            scaler = pickle.load(f)
 
-    print("[OK] Model Loaded")
-    print("[OK] Scaler Loaded")
-    print("Scaler feature count:", scaler.n_features_in_)
+        model_error = None
+        print("[OK] Model Loaded")
+        print("[OK] Scaler Loaded")
+        print("Scaler feature count:", scaler.n_features_in_)
+
+    except Exception as e:
+        model = None
+        scaler = None
+        model_error = str(e)
+        print("[WARN] Model/scaler gagal dimuat:", model_error)
 
 
 load_model()
 
 
+def is_model_ready():
+    return model is not None and scaler is not None
+
+
 # ==========================
 # PREPROCESS
 # ==========================
-def preprocess_audio(audio_bytes):
+def preprocess_audio(audio_bytes, suffix=".wav"):
 
     with tempfile.NamedTemporaryFile(
-        suffix=".wav",
+        suffix=suffix,
         delete=False
     ) as tmp:
 
@@ -117,11 +132,12 @@ def extract_features(audio):
         combined.std(axis=1)
     ])
 
+    feature = (feature - np.mean(feature)) / (np.std(feature) + 1e-8)
     feature = feature.reshape(1, -1)
 
     print("\n=== LIVE FEATURE DEBUG ===")
     print("Feature shape:", feature.shape)
-    print("Expected:", scaler.n_features_in_)
+    print("Expected:", scaler.n_features_in_ if scaler is not None else "model not loaded")
     print("==========================")
 
     return feature
@@ -134,25 +150,34 @@ def extract_features(audio):
 def home():
     return render_template(
         "index.html",
-        model_ready=True
+        model_ready=is_model_ready()
     )
 
 
 @app.route("/api/predict", methods=["POST"])
 def predict():
 
+    if not is_model_ready():
+        return jsonify({
+            "success": False,
+            "message": f"Model belum siap: {model_error or 'file model/scaler tidak tersedia'}"
+        }), 503
+
     if "audio" not in request.files:
         return jsonify({
             "success": False,
             "message": "Audio tidak ditemukan"
-        })
+        }), 400
 
     try:
 
         file = request.files["audio"]
+        filename = file.filename or ""
+        suffix = os.path.splitext(filename)[1].lower() or ".wav"
 
         audio = preprocess_audio(
-            file.read()
+            file.read(),
+            suffix=suffix
         )
 
         feat = extract_features(audio)
@@ -199,7 +224,8 @@ def predict():
 @app.route("/api/status")
 def status():
     return jsonify({
-        "model_loaded": True
+        "model_loaded": is_model_ready(),
+        "error": model_error
     })
 
 
