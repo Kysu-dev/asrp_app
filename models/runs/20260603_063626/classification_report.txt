@@ -1,0 +1,22 @@
+Train Accuracy : 98.50%
+Test  Accuracy : 94.00%
+CV Val  Mean   : 90.64%
+CV Train Mean  : 97.84%
+
+CLASSIFICATION REPORT:
+              precision    recall  f1-score   support
+
+           0       0.96      0.96      0.96        25
+           1       0.96      0.96      0.96        25
+           2       0.92      0.96      0.94        25
+           3       1.00      0.92      0.96        25
+           4       0.92      0.96      0.94        25
+           5       0.87      0.80      0.83        25
+           6       0.93      1.00      0.96        25
+           7       0.89      1.00      0.94        25
+           8       0.96      0.96      0.96        25
+           9       1.00      0.88      0.94        25
+
+    accuracy                           0.94       250
+   macro avg       0.94      0.94      0.94       250
+weighted avg       0.94      0.94      0.94       250

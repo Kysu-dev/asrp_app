@@ -1,232 +1,180 @@
-"""
-train.py
-SVM classifier + DEBUG FEATURE CONSISTENCY
-"""
-
 import os
 import pickle
 import datetime
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
-
 import matplotlib.pyplot as plt
 
-from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import GroupShuffleSplit, GroupKFold, cross_validate
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     precision_score,
     recall_score,
-    f1_score
+    f1_score,
+    ConfusionMatrixDisplay
 )
+from sklearn.pipeline import Pipeline
 
-# ── CONFIG ─────────────────────────────────────────────
-FEATURES_PATH = "models/features.pkl"
-RUN_BASE_DIR = os.path.join("models", "runs")
+FEATURES_PATH    = "models/features.pkl"
+RUN_BASE_DIR     = os.path.join("models", "runs")
 FINAL_MODEL_PATH = os.path.join("models", "asr_model.pkl")
-FINAL_SCALER_PATH = os.path.join("models", "scaler.pkl")
-TEST_SIZE = 0.2
+FINAL_SCALER_PATH= os.path.join("models", "scaler.pkl")
+TEST_SIZE        = 0.2
 
-SVM_PARAMS = {
-    "kernel": "rbf",
-    "C": 10,
-    "gamma": "scale",
-    "probability": True,
-    "class_weight": "balanced"
+MLP_PARAMS = {
+    "hidden_layer_sizes": (256, 128),
+    "activation"        : "relu",
+    "solver"            : "adam",
+    "alpha"             : 0.001,
+    "max_iter"          : 500,
+    "early_stopping"    : True,
+    "random_state"      : 42
 }
 
+CV_FOLDS  = 3
+N_JOBS_CV = -1
 
-# ── LOAD DATA ─────────────────────────────────────────
+
 def load_features():
     with open(FEATURES_PATH, "rb") as f:
         data = pickle.load(f)
-    return data["X"], data["y"], data["classes"]
+    return data["X"], data["y"], data.get("groups", np.arange(len(data["y"]))), data["classes"]
 
 
-# ── RUN DIR ───────────────────────────────────────────
 def make_run_dir():
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(RUN_BASE_DIR, ts)
     os.makedirs(path, exist_ok=True)
     return path
 
 
-# ── CONFUSION MATRIX ──────────────────────────────────
 def plot_confusion_matrix(cm, classes, run_dir):
-    plt.figure(figsize=(8, 6))
-    plt.imshow(cm, cmap="Blues")
-
-    plt.xticks(range(len(classes)), classes, rotation=45)
-    plt.yticks(range(len(classes)), classes)
-
-    for i in range(len(classes)):
-        for j in range(len(classes)):
-            plt.text(j, i, cm[i, j], ha="center", va="center")
-
-    plt.title("Confusion Matrix (SVM)")
-    plt.colorbar()
-
+    fig, ax = plt.subplots(figsize=(9, 7))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes)
+    disp.plot(ax=ax, cmap="Blues", colorbar=True)
+    ax.set_title("Confusion Matrix (MLP)", fontsize=14, fontweight="bold")
+    plt.tight_layout()
     path = os.path.join(run_dir, "confusion_matrix.png")
-    plt.savefig(path)
+    plt.savefig(path, dpi=150)
     plt.close()
-    print("Saved:", path)
 
 
-# ── F1 / PREC / REC ───────────────────────────────────
-def plot_f1_per_class(y_test, y_pred, classes, run_dir):
-    f1 = f1_score(y_test, y_pred, average=None, zero_division=0)
+def plot_metrics_per_class(y_test, y_pred, classes, run_dir):
+    f1   = f1_score(y_test, y_pred, average=None, zero_division=0)
     prec = precision_score(y_test, y_pred, average=None, zero_division=0)
-    rec = recall_score(y_test, y_pred, average=None, zero_division=0)
+    rec  = recall_score(y_test, y_pred, average=None, zero_division=0)
 
     x = np.arange(len(classes))
     w = 0.25
 
-    plt.figure(figsize=(10, 5))
-    plt.bar(x - w, prec, w, label="Precision")
-    plt.bar(x, rec, w, label="Recall")
-    plt.bar(x + w, f1, w, label="F1")
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.bar(x - w, prec, w, label="Precision", color="#4C72B0")
+    ax.bar(x,     rec,  w, label="Recall",    color="#55A868")
+    ax.bar(x + w, f1,   w, label="F1-Score",  color="#C44E52")
 
-    plt.xticks(x, classes)
-    plt.ylim(0, 1.1)
-    plt.title("Precision / Recall / F1 (SVM)")
-    plt.legend()
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes)
+    ax.set_ylim(0, 1.1)
+    ax.set_title("Precision / Recall / F1 per Kelas (MLP)", fontsize=13, fontweight="bold")
+    ax.legend()
+    ax.axhline(y=0.8, linestyle="--", color="gray", alpha=0.5, label="Target 80%")
+    plt.tight_layout()
 
-    path = os.path.join(run_dir, "f1_per_class.png")
-    plt.savefig(path)
+    path = os.path.join(run_dir, "metrics_per_class.png")
+    plt.savefig(path, dpi=150)
     plt.close()
-    print("Saved:", path)
 
 
-# ── CV SCORE ──────────────────────────────────────────
-def plot_cv_scores(cv_scores, run_dir):
-    plt.figure(figsize=(7, 4))
-    plt.bar(range(len(cv_scores)), cv_scores * 100)
-    plt.axhline(cv_scores.mean() * 100, linestyle="--")
-    plt.ylim(0, 100)
-    plt.title("Cross Validation Scores (SVM)")
+def plot_cv_scores(cv_result, run_dir):
+    train_scores = cv_result["train_score"] * 100
+    test_scores  = cv_result["test_score"]  * 100
+
+    folds = range(1, len(test_scores) + 1)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(folds, train_scores, "o-", label="Train",  color="#4C72B0")
+    ax.plot(folds, test_scores,  "s-", label="Val",    color="#C44E52")
+    ax.axhline(test_scores.mean(), linestyle="--", color="#C44E52", alpha=0.6,
+               label=f"Val Mean: {test_scores.mean():.1f}%")
+    ax.set_xlabel("Fold")
+    ax.set_ylabel("Accuracy (%)")
+    ax.set_ylim(0, 105)
+    ax.set_xticks(list(folds))
+    ax.set_title(f"Cross-Validation Scores ({CV_FOLDS}-Fold)", fontsize=13, fontweight="bold")
+    ax.legend()
+    plt.tight_layout()
 
     path = os.path.join(run_dir, "cv_scores.png")
-    plt.savefig(path)
+    plt.savefig(path, dpi=150)
     plt.close()
-    print("Saved:", path)
 
 
-# ── MAIN TRAIN ────────────────────────────────────────
 def train():
-    print("=== TRAINING SVM ASR ===\n")
-
-    X, y, classes = load_features()
+    X, y, groups, classes = load_features()
     y = np.array(y)
-
-    # 🔥 DEBUG INPUT SHAPE
-    print("\n=== FEATURE DEBUG ===")
-    print(f"X shape           : {X.shape}")
-    print(f"y shape           : {y.shape}")
-    print(f"feature dim       : {X.shape[1]}")
-    print(f"class count       : {len(classes)}")
-
-    print("\nDistribusi kelas:")
-    for c in classes:
-        print(f"{c}: {np.sum(y == int(c))}")
-
+    groups = np.array(groups)
     run_dir = make_run_dir()
-    print("\nRun dir:", run_dir)
 
-    # split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=TEST_SIZE,
-        stratify=y,
-        random_state=42
-    )
+    # Mencegah Data Leakage: Pastikan satu original file + semua augmentasinya berada di split yang sama
+    gss = GroupShuffleSplit(n_splits=1, test_size=TEST_SIZE, random_state=42)
+    train_idx, test_idx = next(gss.split(X, y, groups))
+    
+    X_train, X_test = X[train_idx], X[test_idx]
+    y_train, y_test = y[train_idx], y[test_idx]
 
-    # scaling
-    scaler = StandardScaler()
+    scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    X_test  = scaler.transform(X_test)
 
-    # model
-    model = SVC(**SVM_PARAMS)
+    model = MLPClassifier(**MLP_PARAMS)
     model.fit(X_train, y_train)
 
-    y_pred = model.predict(X_test)
+    y_pred     = model.predict(X_test)
+    train_acc  = model.score(X_train, y_train)
+    test_acc   = model.score(X_test,  y_test)
+    report     = classification_report(y_test, y_pred)
+    cm         = confusion_matrix(y_test, y_pred)
 
-    train_acc = model.score(X_train, y_train)
-    test_acc = model.score(X_test, y_test)
+    pipe = Pipeline([
+        ("scaler", StandardScaler()),
+        ("mlp",    MLPClassifier(**MLP_PARAMS))
+    ])
 
-    report = classification_report(y_test, y_pred)
-    cm = confusion_matrix(y_test, y_pred)
-
-    print("\n==============================")
-    print(f"Train Accuracy : {train_acc*100:.2f}%")
-    print(f"Test Accuracy  : {test_acc*100:.2f}%")
-    print("==============================\n")
-    print(report)
-
-    # CV
-    scaler_cv = StandardScaler()
-    X_cv = scaler_cv.fit_transform(X)
-
-    cv_scores = cross_val_score(
-        SVC(**SVM_PARAMS),
-        X_cv,
-        y,
-        cv=5
+    cv_result = cross_validate(
+        pipe, X, y, groups=groups,
+        cv=GroupKFold(n_splits=CV_FOLDS),
+        scoring="accuracy",
+        return_train_score=True,
+        n_jobs=N_JOBS_CV
     )
 
-    print("\nCross Validation:")
-    print(f"Mean : {cv_scores.mean()*100:.2f}%")
-    print(f"Std  : {cv_scores.std()*100:.2f}%")
+    cv_test  = cv_result["test_score"]
+    cv_train = cv_result["train_score"]
 
-    # SAVE MODEL
-    model_path = os.path.join(run_dir, "svm_model.pkl")
+    model_path  = os.path.join(run_dir, "mlp_model.pkl")
     scaler_path = os.path.join(run_dir, "scaler.pkl")
 
-    os.makedirs("models", exist_ok=True)
+    with open(model_path,        "wb") as f: pickle.dump(model,  f)
+    with open(scaler_path,       "wb") as f: pickle.dump(scaler, f)
+    with open(FINAL_MODEL_PATH,  "wb") as f: pickle.dump(model,  f)
+    with open(FINAL_SCALER_PATH, "wb") as f: pickle.dump(scaler, f)
 
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-
-    with open(scaler_path, "wb") as f:
-        pickle.dump(scaler, f)
-
-    with open(FINAL_MODEL_PATH, "wb") as f:
-        pickle.dump(model, f)
-
-    with open(FINAL_SCALER_PATH, "wb") as f:
-        pickle.dump(scaler, f)
-
-    # SAVE REPORT (FULL DEBUG)
     report_path = os.path.join(run_dir, "classification_report.txt")
-
     with open(report_path, "w") as f:
-        f.write("=== SVM TRAINING REPORT ===\n\n")
-
-        f.write("=== FEATURE DEBUG ===\n")
-        f.write(f"X shape : {X.shape}\n")
-        f.write(f"feature dim : {X.shape[1]}\n\n")
-
         f.write(f"Train Accuracy : {train_acc*100:.2f}%\n")
-        f.write(f"Test Accuracy  : {test_acc*100:.2f}%\n\n")
-        f.write(f"CV Mean        : {cv_scores.mean()*100:.2f}%\n")
-        f.write(f"CV Std         : {cv_scores.std()*100:.2f}%\n\n")
-
-        f.write("Class Distribution:\n")
-        for c in classes:
-            f.write(f"{c}: {np.sum(y == int(c))}\n")
-
-        f.write("\nCLASSIFICATION REPORT:\n")
+        f.write(f"Test  Accuracy : {test_acc*100:.2f}%\n")
+        f.write(f"CV Val  Mean   : {cv_test.mean()*100:.2f}%\n")
+        f.write(f"CV Train Mean  : {cv_train.mean()*100:.2f}%\n\n")
+        f.write("CLASSIFICATION REPORT:\n")
         f.write(report)
 
-    # PLOTS (TETAP ADA)
     plot_confusion_matrix(cm, classes, run_dir)
-    plot_f1_per_class(y_test, y_pred, classes, run_dir)
-    plot_cv_scores(cv_scores, run_dir)
-
-    print("\nDONE →", run_dir)
+    plot_metrics_per_class(y_test, y_pred, classes, run_dir)
+    plot_cv_scores(cv_result, run_dir)
+    print(f"Finished. Saved to {run_dir}")
 
 
 if __name__ == "__main__":
