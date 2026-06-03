@@ -24,6 +24,7 @@ const RECORD_MS = 2000;
 
 let mediaRecorder, streamGlobal;
 let isRecording  = false;
+let isPressing   = false;
 let history      = [];
 let selectedFile = null;
 let activeTab    = "mic";
@@ -236,6 +237,7 @@ async function sendAudio(blob, isFile = false, filename = "audio.wav") {
 
 async function startRecording() {
   if (isRecording) return;
+  isPressing = true;
   clearStatus();
 
   try {
@@ -250,6 +252,13 @@ async function startRecording() {
     });
   } catch {
     setStatus("Mic tidak bisa diakses. Cek izin browser.", "error");
+    isPressing = false;
+    return;
+  }
+
+  if (!isPressing) {
+    streamGlobal.getTracks().forEach(t => t.stop());
+    streamGlobal = null;
     return;
   }
 
@@ -292,6 +301,7 @@ async function startRecording() {
 }
 
 function stopRecording() {
+  isPressing = false;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
   }
